@@ -2,8 +2,8 @@
 
 **AI-Powered AWS Cloud Security & MLOps Platform**
 
-[![CI — Test, Build & Deploy](https://github.com/sani3055/CloudGuard/actions/workflows/ci.yml/badge.svg)](https://github.com/sani3055/CloudGuard/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-126%20passed-brightgreen)](https://github.com/sani3055/CloudGuard/actions/workflows/ci.yml)
+[![CI — Test, Build & Deploy](https://github.com/sani3055/CloudSecure/actions/workflows/ci.yml/badge.svg)](https://github.com/sani3055/CloudSecure/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-126%20passed-brightgreen)](https://github.com/sani3055/CloudSecure/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.11-blue)](https://www.python.org/)
 [![Terraform](https://img.shields.io/badge/IaC-Terraform-7B42BC)](https://www.terraform.io/)
 [![AWS](https://img.shields.io/badge/AWS-Lambda%20%7C%20DynamoDB%20%7C%20ECR-FF9900)](https://aws.amazon.com/)
