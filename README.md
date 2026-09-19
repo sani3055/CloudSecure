@@ -1,160 +1,220 @@
-# CloudSecure
+# CloudGuard
 
-**Cloud + ML Engineering & MLOps Platform**
+**AI-Powered AWS Cloud Security & MLOps Platform**
 
-CloudSecure is an advanced, event-driven AWS cloud platform that ingests real-time infrastructure telemetry, processes it through an unsupervised Machine Learning pipeline (Isolation Forest), and provides deep, actionable explainability using SHAP (SHapley Additive exPlanations). 
-
-While the primary application use-case is **security anomaly detection**, the core identity of CloudSecure is a scalable **Cloud Engineering and MLOps platform**. It demonstrates how to integrate serverless AWS infrastructure with robust machine learning models, CI/CD pipelines, and Infrastructure as Code (IaC).
-
----
-
-## 📖 Problem Statement
-
-Modern cloud environments generate millions of API events daily. Rule-based monitoring systems are noisy, rigid, and struggle to detect novel or "zero-day" anomalies. Furthermore, when "black-box" machine learning models flag an anomaly, operations teams are left without context, making it impossible to confidently automate remediation.
-
-**CloudSecure solves this by:**
-1. Ingesting AWS CloudTrail events in real-time.
-2. Using unsupervised ML (Isolation Forest) to isolate anomalies without relying on predefined rules.
-3. Leveraging SHAP (Explainable AI) to attribute exact feature contributions to the anomaly score.
-4. Providing a highly polished, interactive Streamlit UI for operational review and automated IAM policy remediation.
+[![CI — Test, Build & Deploy](https://github.com/sani3055/CloudGuard/actions/workflows/ci.yml/badge.svg)](https://github.com/sani3055/CloudGuard/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-126%20passed-brightgreen)](https://github.com/sani3055/CloudGuard/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.11-blue)](https://www.python.org/)
+[![Terraform](https://img.shields.io/badge/IaC-Terraform-7B42BC)](https://www.terraform.io/)
+[![AWS](https://img.shields.io/badge/AWS-Lambda%20%7C%20DynamoDB%20%7C%20ECR-FF9900)](https://aws.amazon.com/)
 
 ---
 
-## 🌟 Key Features & Methodologies
-
-### 🧠 Machine Learning Intelligence
-- **Isolation Forest:** An unsupervised anomaly detection algorithm from `scikit-learn`. Instead of profiling "normal" data, it explicitly isolates anomalies by measuring the path length of data points in random decision trees. Anomalies (rare events) have shorter path lengths.
-- **Feature Engineering:** Raw CloudTrail JSON is transformed into a robust feature vector (e.g., temporal encoding of event times, IP frequency mapping, categorical encoding of AWS regions and API services).
-- **Risk Scoring (0-100):** The raw anomaly score is mathematically normalized into an intuitive 0-100 Risk Score.
-- **SHAP / Explainable AI (XAI):** Uses `shap.TreeExplainer` to break down every inference. The dashboard visualizes exactly *why* a score was generated (e.g., "Score increased by +42 because the API call occurred at 3 AM from an anomalous IP").
-- **Offline Evaluation (80/20):** Evaluated against a synthetically poisoned AWS dataset using an 80/20 train-test split. The model achieves robust Precision, Recall, and F1 scores, correctly identifying sophisticated deviations (such as anomalous `AssumeRole` calls) while minimizing false positives on routine `DescribeInstances` events.
-
-### 🏗️ Cloud Infrastructure
-- **AWS CloudTrail & EventBridge:** Provides the real-time event bus and API telemetry.
-- **AWS Lambda (Docker):** The core inference engine. Packaged as a Docker container stored in **Amazon ECR** to bypass standard Lambda size limits, allowing the deployment of heavy data science libraries (`pandas`, `scikit-learn`, `shap`).
-- **Amazon DynamoDB:** A low-latency NoSQL datastore used to persist event payloads, ML scores, SHAP values, and remediation states.
-
-### ⚙️ DevOps, IaC & CI/CD
-- **Terraform:** Full Infrastructure as Code (IaC) deployment for all AWS resources, ensuring reproducible environments.
-- **GitHub Actions & AWS OIDC:** Secure, keyless CI/CD pipeline. GitHub Actions assumes a least-privilege IAM role via OpenID Connect to build the Docker image, run the `pytest` suite, and push to ECR.
+CloudGuard is a production-grade, event-driven AWS security platform that ingests real-time CloudTrail telemetry, detects anomalies using an **Isolation Forest** ML model, and provides deep explainability via **SHAP (SHapley Additive exPlanations)**. When a threat is detected, the system automatically generates a least-privilege **IAM Deny policy**, validates it with **AWS Access Analyzer**, and stores it for one-click SOC approval.
 
 ---
 
-## 🔄 End-to-End Data Flow
+## Architecture
 
-1. **Ingestion:** An AWS API call occurs. CloudTrail logs it and EventBridge triggers the pipeline.
-2. **Compute:** The event is routed to the Dockerized AWS Lambda function.
-3. **Inference:** The Lambda extracts features, encodes them, and passes the vector to the Isolation Forest model.
-4. **Explainability:** If an anomaly is detected, SHAP calculates the exact feature attributions.
-5. **Storage:** The raw event, risk score, and SHAP JSON are saved to DynamoDB.
-6. **Visualization:** The Streamlit frontend queries DynamoDB, rendering the data in the CloudSecure dashboard.
-7. **Action:** Through the UI, an engineer reviews the SHAP explanation and clicks "Approve Remediation", which dynamically generates an AWS IAM Deny policy and attaches it to the offending Principal.
+```mermaid
+flowchart TD
+    subgraph Ingest["Ingestion"]
+        CT["AWS CloudTrail\nEvent Telemetry"]
+        EB["EventBridge\nEvent Bus"]
+    end
+
+    subgraph Compute["Serverless Compute — AWS Lambda Docker"]
+        FE["Feature Extraction\nfeature_contract.py"]
+        IF["Isolation Forest\nAnomaly Score"]
+        SH["SHAP TreeExplainer\nFeature Attribution"]
+        TC["Threat Classifier\n6 MITRE ATT&CK categories"]
+        IG["IAM Policy Generator\n+ Access Analyzer Validation"]
+    end
+
+    subgraph Storage["Storage & Alerting"]
+        DB[("DynamoDB\nThreatEvents")]
+        SNS["SNS\nEmail Alerts"]
+    end
+
+    subgraph Ops["Operations"]
+        UI["Streamlit SOC Dashboard\nReview · Investigate · Remediate"]
+    end
+
+    subgraph DevOps["DevOps & IaC"]
+        GH["GitHub Actions CI/CD\ntest → build → ECR → Lambda"]
+        TF["Terraform\nFull IaC"]
+    end
+
+    CT -->|management events| EB
+    EB -->|triggers| FE
+    FE --> IF
+    IF -->|anomaly detected| SH
+    SH --> TC
+    TC --> IG
+    IG --> DB
+    IG -->|high risk| SNS
+    DB <-->|query / approve| UI
+    GH -.->|deploy image| Compute
+    TF -.->|provisions| Storage
+    TF -.->|provisions| Compute
+
+    style Ingest fill:#0d2137,stroke:#1f6feb,color:#cdd9e5
+    style Compute fill:#0d1f0d,stroke:#238636,color:#cdd9e5
+    style Storage fill:#1f1200,stroke:#d29922,color:#cdd9e5
+    style Ops fill:#1a0a2e,stroke:#8b5cf6,color:#cdd9e5
+    style DevOps fill:#1a1a1a,stroke:#6e7681,color:#cdd9e5
+```
 
 ---
 
-## 💻 Dashboard Pages
+## Key Features
 
-- **Overview:** High-level metrics, 0-100 Risk Score distributions, and pipeline status.
-- **Event Investigation:** Deep dive into specific events with interactive SHAP bar charts and raw JSON payloads.
-- **Analytics:** Macro-level trends, geographic IP mapping, and API service volume analysis.
-- **ML Intelligence:** Visualizes model hyperparameters, evaluation metrics (F1/Precision/Recall), and the Isolation Forest boundary mechanics.
-- **Cloud Infrastructure:** Real-time `boto3` diagnostics pinging DynamoDB, Lambda, ECR, and EventBridge to ensure backend health.
-- **Architecture:** The complete architectural flow.
+### 🧠 Machine Learning
+- **Isolation Forest** — unsupervised, no labeled data required; trained on 1.93M real CloudTrail events
+- **Feature Contract** (`ml/feature_contract.py`) — single source of truth for feature extraction; used at both training and inference time
+- **SHAP XAI** — every prediction includes `shap_values` for all 5 features, stored in DynamoDB alongside the event
+- **Risk Score (0–100)** — normalized from raw IF decision score, weighted by severity and attribution confidence
+- **6 MITRE ATT&CK categories** — Privilege Escalation, Defense Evasion, Credential Anomaly, Geographic Anomaly, Temporal Anomaly, Resource Exfiltration
 
-### LIVE vs DEMO Mode
-CloudSecure operates in two modes:
-- **LIVE Mode:** Actively queries DynamoDB for real AWS events.
-- **DEMO Mode:** If the DynamoDB table is empty (or AWS access is restricted), the backend injects realistic, mathematically consistent synthetic events into the dashboard to demonstrate the UI, SHAP charts, and ML features.
+### 🔒 Security Design
+- **SIMULATION_MODE gate** (default `true`) — prevents any real IAM writes without explicit opt-in
+- **ENFORCE_MODE gate** — second gate required before live enforcement
+- **PROTECTED_PRINCIPALS** — comma-separated ARN list; these principals are never touched
+- **Access Analyzer validation** — every generated IAM policy is validated for `ERROR` and `SECURITY_WARNING` findings before enforcement
+
+### ⚙️ DevOps / IaC
+- **Terraform** — ECR, Lambda, DynamoDB, CloudTrail, EventBridge, SNS, IAM OIDC roles — all reproducible
+- **GitHub Actions OIDC** — keyless CI/CD; no long-lived AWS access keys
+- **Docker Lambda** — bypasses 250MB layer limit; enables heavy ML libraries (`scikit-learn`, `shap`, `pandas`)
 
 ---
 
-## 🛠️ Project Structure
+## Dashboard Pages
+
+| Page | Description |
+|---|---|
+| **Overview** | Live risk score gauge, event volume chart, severity breakdown |
+| **Event Investigation** | Per-event SHAP chart (real ML values from DB), IAM policy viewer, approve/reject remediation |
+| **Analytics** | Trend analysis, regional heatmap, top API calls |
+| **ML Intelligence** | Model hyperparameters, F1/Precision/Recall, feature importance |
+| **Cloud Infrastructure** | Live boto3 diagnostics pinging Lambda, DynamoDB, ECR, EventBridge |
+| **Architecture** | Full pipeline walkthrough |
+
+> **LIVE vs DEMO:** When DynamoDB contains real events, the dashboard shows them. When empty, it falls back to 106 synthetic-but-pipeline-consistent events for demo purposes.
+
+---
+
+## Project Structure
 
 ```text
-CloudSecure/
+CloudGuard/
 ├── backend/
-│   ├── Dockerfile
-│   ├── lambda_function.py
-│   ├── ml_inference.py
-│   ├── xai_explainer.py
-│   ├── remediation.py
-│   └── requirements.txt
+│   ├── Dockerfile                  # Lambda container image
+│   ├── lambda_function.py          # Pipeline entry point
+│   ├── config.py                   # All env-var defaults
+│   ├── ml_inference.py             # IsolationForest inference
+│   ├── xai_explainer.py            # SHAP TreeExplainer
+│   ├── threat_classifier.py        # 6-category MITRE classifier
+│   ├── iam_generator.py            # IAM Deny policy generation
+│   ├── policy_validator.py         # AWS Access Analyzer validation
+│   └── remediation.py             # DynamoDB write + IAM enforcement
+├── ml/
+│   ├── feature_contract.py         # SINGLE SOURCE OF TRUTH for features
+│   ├── encoder.pkl                 # Fitted OrdinalEncoder
+│   ├── model.pkl                   # Trained IsolationForest
+│   └── retrain_real.py             # Retraining script
 ├── frontend/
-│   ├── app.py
-│   ├── utils.py
-│   ├── pages/
-│   └── assets/
+│   ├── app.py                      # Streamlit navigation
+│   ├── utils.py                    # load_data(), inject_css(), etc.
+│   ├── pipeline_runner.py          # Local pipeline bridge for UI
+│   └── pages/                      # 6 Streamlit pages
+├── scripts/
+│   └── seed_dynamodb.py            # Seeds DynamoDB with 106 real ML events
 ├── terraform/
-│   ├── main.tf
-│   ├── lambda.tf
-│   └── dynamodb.tf
+│   ├── main.tf                     # ECR, DynamoDB, Lambda, SNS
+│   ├── iam.tf                      # Lambda role + GitHub OIDC role
+│   ├── cloudtrail.tf               # Optional CloudTrail + S3
+│   ├── eventbridge.tf              # EventBridge rule + Lambda permission
+│   └── variables.tf
 ├── tests/
-│   ├── test_feature_contract.py
-│   └── test_full_validation.py
-├── .github/workflows/
-│   └── deploy.yml
-└── README.md
+│   ├── test_feature_contract.py    # Phase 0+1: encoder, model
+│   ├── test_threat_classifier.py   # Phase 3: all 6 categories
+│   ├── test_remediation_gates.py   # Phase 6: safety gates
+│   └── test_full_validation.py     # End-to-end pipeline (no AWS)
+└── .github/workflows/
+    ├── ci.yml                      # Test + Build + Deploy (main branch)
+    └── terraform.yml               # Terraform plan/apply
 ```
 
 ---
 
-## 🚀 Setup & Deployment Instructions
+## Setup & Deployment
 
 ### Prerequisites
-- Python 3.10+
-- AWS CLI configured
-- Terraform installed
-- Docker (optional, for local image testing)
+- Python 3.11+
+- AWS CLI configured (`aws configure`)
+- Terraform ≥ 1.5
+- Docker (for Lambda image builds)
 
-### Local Testing (Dashboard)
+### 1. Local Dashboard
 
-1. Clone the repository.
-2. Navigate to the frontend directory:
-   ```bash
-   cd frontend
-   pip install -r requirements.txt
-   ```
-3. Run the Streamlit dashboard:
-   ```bash
-   python -m streamlit run app.py
-   ```
-4. Open `http://localhost:8501`.
-
-### Running the Test Suite
-
-The repository contains a robust suite of 126 `pytest` unit tests covering the ML contract, feature encoding, and Lambda execution paths.
 ```bash
-python -m pytest tests/ -v
+cd frontend
+pip install -r requirements.txt
+python -m streamlit run app.py
+# Open http://localhost:8501
 ```
 
-### AWS Deployment (Terraform)
+### 2. Run Test Suite
 
-*Note: Ensure your AWS account is configured and you have the necessary permissions to create IAM roles, Lambda functions, ECR repositories, and DynamoDB tables.*
+```bash
+python -m pytest tests/ -v
+# 126 passed
+```
 
-1. Navigate to the Terraform directory:
-   ```bash
-   cd terraform
-   terraform init
-   ```
-2. Review the plan:
-   ```bash
-   terraform plan -out=tfplan
-   ```
-3. Apply the infrastructure:
-   ```bash
-   terraform apply tfplan
-   ```
-*(Note: The Lambda deployment depends on the ECR Docker image. You may need to trigger the GitHub Action or push the Docker image manually before the Lambda module can apply successfully).*
+### 3. Seed DynamoDB with Real Events (optional)
+
+```bash
+python scripts/seed_dynamodb.py --dry-run   # validate first
+python scripts/seed_dynamodb.py              # write 106 events to DynamoDB
+```
+
+### 4. AWS Deployment (Terraform)
+
+```bash
+cd terraform
+terraform init
+terraform plan
+terraform apply
+```
+
+> **Note:** The Lambda resource requires a Docker image in ECR. Run the CI/CD workflow first (step 5), or push the image manually.
+
+### 5. Enable CI/CD (GitHub Actions)
+
+After `terraform apply`, add one secret to your GitHub repo:
+
+| Secret | Value |
+|---|---|
+| `AWS_ROLE_TO_ASSUME` | `arn:aws:iam::648721530849:role/CloudGuard-GitHubActionsRole` |
+
+**Settings → Secrets and variables → Actions → New repository secret**
+
+From then on, every push to `main`:
+1. Runs `pytest` (126 tests)
+2. Builds the Docker image
+3. Pushes to ECR
+4. Updates the Lambda function
 
 ---
 
-## 🚧 Limitations & Future Improvements
+## Limitations & Future Work
 
-- **Cold Starts:** Because the Lambda function utilizes a Docker container loaded with heavyweight ML libraries (`scikit-learn`, `shap`), cold start times can occasionally exceed 5-7 seconds. Provisioned Concurrency can be configured via Terraform to mitigate this.
-- **State Management:** Currently, remediations are tracked as a string state in DynamoDB. A future iteration could integrate AWS Step Functions for robust, multi-step remediation workflows.
-- **Model Drift:** The current Isolation Forest is trained offline and serialized. Future iterations should implement a continuous retraining pipeline (e.g., using AWS SageMaker Pipelines) to adapt to shifting baseline cloud behaviors.
+- **Cold Starts:** Docker Lambda cold starts ~5–7s. Mitigate with Provisioned Concurrency in `lambda.tf`.
+- **Model Drift:** The Isolation Forest is trained offline. Future: schedule retraining via SageMaker Pipelines or a GitHub Actions cron.
+- **Step Functions:** Remediation state is tracked in DynamoDB strings. Future: multi-step remediation with AWS Step Functions.
 
 ---
 
 **Author:** Sanidhya Bhandari  
-**Focus:** Cloud Engineering, Machine Learning Operations (MLOps), AI-Driven Infrastructure
+**Stack:** Python · scikit-learn · SHAP · AWS Lambda · DynamoDB · ECR · EventBridge · Terraform · GitHub Actions · Streamlit

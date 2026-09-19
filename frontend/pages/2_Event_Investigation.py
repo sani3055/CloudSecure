@@ -107,47 +107,96 @@ with c2:
 
 # ── SHAP Visualization ──
 st.markdown("### SHAP Feature Contributions")
-st.markdown("The following visualization shows the internal SHAP (SHapley Additive exPlanations) values for this specific prediction, indicating how much each feature contributed to the final anomaly score.")
+st.markdown(
+    "SHAP (SHapley Additive exPlanations) values show **exactly why** this event "
+    "scored as it did. Negative values push toward Anomaly; positive values push toward Normal."
+)
 
-# Generate synthetic SHAP data based on risk score and event details to make it look realistic
-random.seed(incident['eventId']) # consistent per event
-score = int(incident['riskScore'])
-is_anom = incident['isAnomaly']
-
+# ── Try to use real SHAP values from DynamoDB ─────────────────────────────────
 shap_data = []
-if is_anom:
-    shap_data.append({"Feature": "eventName", "Contribution": random.uniform(0.1, 0.4)})
-    shap_data.append({"Feature": "awsRegion", "Contribution": random.uniform(0.05, 0.25)})
-    shap_data.append({"Feature": "userIdentitytype", "Contribution": random.uniform(0.01, 0.15)})
-    shap_data.append({"Feature": "sourceIP", "Contribution": random.uniform(-0.05, 0.2)})
-    shap_data.append({"Feature": "timeOfDay", "Contribution": random.uniform(-0.1, 0.1)})
-else:
-    shap_data.append({"Feature": "eventName", "Contribution": random.uniform(-0.1, 0.05)})
-    shap_data.append({"Feature": "awsRegion", "Contribution": random.uniform(-0.2, 0.01)})
-    shap_data.append({"Feature": "userIdentitytype", "Contribution": random.uniform(-0.15, -0.01)})
-    shap_data.append({"Feature": "sourceIP", "Contribution": random.uniform(-0.1, 0.05)})
-    shap_data.append({"Feature": "timeOfDay", "Contribution": random.uniform(-0.05, 0.05)})
+shap_source = "synthetic"
+
+raw_shap = incident.get("xai_all_shap", None)
+if raw_shap and isinstance(raw_shap, dict) and len(raw_shap) > 0:
+    # Real SHAP from pipeline — keys are feature names, values are floats
+    shap_data = [{"Feature": k, "Contribution": float(v)} for k, v in raw_shap.items()]
+    shap_source = "real"
+elif raw_shap and isinstance(raw_shap, str):
+    # Stored as JSON string fallback
+    try:
+        parsed = json.loads(raw_shap)
+        shap_data = [{"Feature": k, "Contribution": float(v)} for k, v in parsed.items()]
+        shap_source = "real"
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+# Fallback: generate consistent synthetic SHAP (for demo events or missing data)
+if not shap_data:
+    random.seed(incident["eventId"])
+    is_anom = incident["isAnomaly"]
+    if is_anom:
+        shap_data = [
+            {"Feature": "eventName",        "Contribution": random.uniform(-0.40, -0.10)},
+            {"Feature": "hour",             "Contribution": random.uniform(-0.25, -0.05)},
+            {"Feature": "userIdentitytype", "Contribution": random.uniform(-0.15, -0.01)},
+            {"Feature": "awsRegion",        "Contribution": random.uniform(-0.10,  0.05)},
+            {"Feature": "isRoot",           "Contribution": random.uniform(-0.20,  0.00)},
+        ]
+    else:
+        shap_data = [
+            {"Feature": "eventName",        "Contribution": random.uniform( 0.05,  0.30)},
+            {"Feature": "hour",             "Contribution": random.uniform( 0.02,  0.15)},
+            {"Feature": "userIdentitytype", "Contribution": random.uniform( 0.01,  0.10)},
+            {"Feature": "awsRegion",        "Contribution": random.uniform( 0.00,  0.08)},
+            {"Feature": "isRoot",           "Contribution": random.uniform( 0.00,  0.05)},
+        ]
 
 shap_df = pd.DataFrame(shap_data)
-shap_df['Color'] = shap_df['Contribution'].apply(lambda x: 'Positive (Increases Risk)' if x > 0 else 'Negative (Decreases Risk)')
+# SHAP polarity: negative = pushes toward anomaly (shown in red), positive = pushes toward normal (blue)
+shap_df["Direction"] = shap_df["Contribution"].apply(
+    lambda x: "Pushes toward Anomaly" if x < 0 else "Pushes toward Normal"
+)
+shap_df = shap_df.sort_values("Contribution")
+
+# Badge: real vs synthetic data source
+source_badge = (
+    "<span style='background:#1a6e36;color:#fff;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;'>REAL SHAP (from ML Pipeline)</span>"
+    if shap_source == "real"
+    else "<span style='background:#5a3e7a;color:#fff;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;'>SYNTHETIC (Demo fallback)</span>"
+)
+st.markdown(f"Data source: {source_badge}", unsafe_allow_html=True)
+
+# Attribution confidence (real events only)
+conf = incident.get("xai_attribution_confidence", None)
+if conf and shap_source == "real":
+    try:
+        conf_val = float(conf)
+        st.markdown(f"**Attribution Confidence:** `{conf_val:.2%}`")
+    except (TypeError, ValueError):
+        pass
 
 fig_shap = px.bar(
-    shap_df, 
-    y="Feature", 
-    x="Contribution", 
-    color="Color",
-    orientation='h',
-    color_discrete_map={"Positive (Increases Risk)": "#e05252", "Negative (Decreases Risk)": "#4f86c6"},
-    title=f"SHAP Values for Event {incident['eventId']}"
+    shap_df,
+    y="Feature",
+    x="Contribution",
+    color="Direction",
+    orientation="h",
+    color_discrete_map={
+        "Pushes toward Anomaly": "#e05252",
+        "Pushes toward Normal":  "#4f86c6",
+    },
+    title=f"SHAP Feature Attribution — Event {incident['eventId']}",
 )
 fig_shap.update_layout(
-    template="plotly_dark", 
+    template="plotly_dark",
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(0,0,0,0)",
     margin=dict(t=40, b=20, l=20, r=20),
     height=300,
-    yaxis={'categoryorder':'total ascending'}
+    yaxis={"categoryorder": "total ascending"},
+    legend_title_text="Direction",
 )
+fig_shap.add_vline(x=0, line_width=1, line_dash="dash", line_color="rgba(255,255,255,0.3)")
 st.plotly_chart(fig_shap, use_container_width=True)
 
 st.markdown("---")

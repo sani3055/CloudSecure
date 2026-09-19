@@ -16,7 +16,7 @@ Environment variables (all have safe defaults):
   ANOMALY_SCORE_THRESHOLD  -0.02
   MIN_ATTRIBUTION_CONFIDENCE 0.30
   DYNAMODB_TABLE            ThreatEvents
-  DYNAMODB_REGION           eu-north-1
+  DYNAMODB_REGION           ap-south-1
   SNS_TOPIC_ARN             (empty = no alerts)
   PROTECTED_PRINCIPALS      (comma-separated ARNs)
   LOG_LEVEL                 INFO

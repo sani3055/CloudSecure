@@ -3,11 +3,13 @@ utils.py
 ========
 Shared utilities for the CloudSecure Streamlit dashboard.
 """
+import uuid
+import random
+from datetime import datetime, timedelta
+
 import boto3
 import pandas as pd
 import streamlit as st
-import random
-from datetime import datetime, timedelta
 
 @st.cache_resource
 def get_table():
@@ -70,7 +72,6 @@ def generate_demo_data() -> pd.DataFrame:
         
     return pd.DataFrame(demo_events)
 
-import uuid
 @st.cache_data(ttl=10)
 def load_data(include_demo: bool = True) -> pd.DataFrame:
     """Load ThreatEvents. Generates SIMULATION data to ensure the UI is populated."""
@@ -120,7 +121,10 @@ def load_data(include_demo: bool = True) -> pd.DataFrame:
         else:
             df[col] = default
             
-    df["riskScore"] = df.get("riskScore", 0).fillna(0).astype(int)
+    if "riskScore" in df.columns:
+        df["riskScore"] = pd.to_numeric(df["riskScore"], errors="coerce").fillna(0).astype(int)
+    else:
+        df["riskScore"] = 0
     if "timestamp" in df.columns:
         df["timestamp"] = pd.to_datetime(df["timestamp"], format="ISO8601", errors="coerce")
 

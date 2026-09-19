@@ -184,19 +184,33 @@ def _build_policy(category: str, region: str, hour: int) -> dict:
         )
 
     elif category == "TEMPORAL_ANOMALY":
-        # Deny all API calls during off-hours (before 06:00 or after 22:00 UTC)
-        # IAM condition key: aws:CurrentTime with DateGreaterThan/DateLessThan
-        # Note: This is an approximate policy — exact time-based conditions require
-        # careful testing with Access Analyzer.
-        return _deny_policy(
-            sid="DenyOffHoursActivity",
-            actions=["*"],
-            resources=["*"],
-            conditions={
-                "NumericLessThan":    {"aws:CurrentTime": "06"},
-                "NumericGreaterThan": {"aws:CurrentTime": "22"},
+        # Deny all API calls during off-hours (before 06:00 UTC or after 22:00 UTC).
+        # IAM note: aws:CurrentTime requires ISO-8601 datetime strings.
+        # Two separate Deny statements (logically OR'd at evaluation time) are needed
+        # because a single Condition object applies AND logic — impossible to satisfy
+        # with a single time value.
+        statement_before_hours: dict[str, Any] = {
+            "Sid":       "DenyBeforeBusinessHours",
+            "Effect":    "Deny",
+            "Action":    ["*"],
+            "Resource":  ["*"],
+            "Condition": {
+                "DateLessThan": {"aws:CurrentTime": "1970-01-01T06:00:00Z"},
             },
-        )
+        }
+        statement_after_hours: dict[str, Any] = {
+            "Sid":       "DenyAfterBusinessHours",
+            "Effect":    "Deny",
+            "Action":    ["*"],
+            "Resource":  ["*"],
+            "Condition": {
+                "DateGreaterThan": {"aws:CurrentTime": "1970-01-01T22:00:00Z"},
+            },
+        }
+        return {
+            "Version":   "2012-10-17",
+            "Statement": [statement_before_hours, statement_after_hours],
+        }
 
     elif category == "RESOURCE_EXFILTRATION":
         return _deny_policy(

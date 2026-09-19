@@ -1,49 +1,60 @@
-name: CI/CD Pipeline
+name: CI — Test, Build & Deploy
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main]
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
 
 permissions:
-  id-token: write # Required for AWS OIDC authentication
+  id-token: write   # Required for AWS OIDC
   contents: read
 
 env:
-  AWS_REGION: ap-south-1
-  ECR_REPOSITORY: cloudguard-lambda
+  AWS_REGION:       ap-south-1
+  ECR_REPOSITORY:   cloudguard-lambda
+  LAMBDA_FUNCTION:  CloudGuard-Detection
 
 jobs:
+  # ─────────────────────────────────────────────
+  # Job 1: Run the full pytest suite
+  # Runs on every push and every PR
+  # ─────────────────────────────────────────────
   test:
-    name: Run Pytest
+    name: 🧪 Pytest — 126 Tests
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
-          
-      - name: Install dependencies
-        run: |
-          pip install -r backend/requirements.txt
-          pip install pytest pytest-cov
-          
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+
       - name: Run test suite
-        run: |
-          pytest tests/ -v
+        run: python -m pytest tests/ -v --tb=short
 
-  build-and-push:
-    name: Build & Deploy to ECR/Lambda
-    needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  # ─────────────────────────────────────────────
+  # Job 2: Build Docker image → push to ECR → update Lambda
+  # Only runs on pushes to main (not on PRs)
+  # ─────────────────────────────────────────────
+  build-and-deploy:
+    name: 🐳 Build → ECR → Lambda
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
-      - name: Configure AWS credentials
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC — no long-lived keys)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
@@ -53,27 +64,29 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build, tag, and push image to Amazon ECR
+      - name: Build, tag, and push Docker image to ECR
+        id: build-image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: latest
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f backend/Dockerfile .
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+                       -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
+                       -f backend/Dockerfile .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Deploy to Lambda
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+      - name: Update Lambda function to latest image
         run: |
-          # The Lambda function will only be updated if it already exists (Terraform has created it).
-          if aws lambda get-function --function-name CloudGuard-Detection > /dev/null 2>&1; then
-            echo "Lambda found. Updating function code..."
-            aws lambda update-function-code \
-              --function-name CloudGuard-Detection \
-              --image-uri $ECR_REGISTRY/$ECR_REPOSITORY:latest
-            aws lambda wait function-updated --function-name CloudGuard-Detection
-            echo "Deployment successful."
-          else
-            echo "Skipping update: Lambda function CloudGuard-Detection does not exist yet."
-            echo "You must run Terraform apply first to provision the infrastructure."
-          fi
+          aws lambda update-function-code \
+            --function-name ${{ env.LAMBDA_FUNCTION }} \
+            --image-uri ${{ steps.build-image.outputs.image }} \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Wait for Lambda update to complete
+        run: |
+          aws lambda wait function-updated \
+            --function-name ${{ env.LAMBDA_FUNCTION }} \
+            --region ${{ env.AWS_REGION }}
+          echo "✅ Lambda updated successfully to ${{ steps.build-image.outputs.image }}"
