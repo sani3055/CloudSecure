@@ -94,9 +94,4 @@ jobs:
             --image-uri ${{ steps.build-image.outputs.image }} \
             --region ${{ env.AWS_REGION }}
 
-      - name: Wait for Lambda update to complete
-        run: |
-          aws lambda wait function-updated \
-            --function-name ${{ env.LAMBDA_FUNCTION }} \
-            --region ${{ env.AWS_REGION }}
-          echo "✅ Lambda updated successfully to ${{ steps.build-image.outputs.image }}"
+
