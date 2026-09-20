@@ -60,14 +60,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC — no long-lived keys)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: ${{ env.AWS_REGION }}
-          audience: sts.amazonaws.com
-          role-session-name: CloudSecure-GitHubActions
-          role-duration-seconds: 1800
+      - name: Debug OIDC Token and STS
+        run: |
+          echo "Fetching OIDC token..."
+          TOKEN=$(curl -sLS "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" | jq -r '.value')
+          echo "Token fetched. Length: ${#TOKEN}"
+          echo "Calling AWS STS AssumeRoleWithWebIdentity..."
+          aws sts assume-role-with-web-identity \
+            --role-arn ${{ secrets.AWS_ROLE_TO_ASSUME }} \
+            --role-session-name DebugSession \
+            --web-identity-token $TOKEN \
+            --region ${{ env.AWS_REGION }} || echo "STS call failed."
 
       - name: Login to Amazon ECR
         id: login-ecr
