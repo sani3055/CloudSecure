@@ -7,7 +7,7 @@ variable "aws_region" {
 variable "github_repo" {
   description = "GitHub repository for OIDC (org/repo)"
   type        = string
-  default     = "sani3055/CloudGuard"
+  default     = "sani3055/CloudSecure"
 }
 
 variable "alert_email" {
